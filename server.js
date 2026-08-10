@@ -319,6 +319,7 @@ Read the contract text the user provides, then respond with ONLY a single JSON o
 }
 
 Rules:
+- Keep the whole response compact — this is being parsed by code, not read by a person, so brevity matters more than completeness. Treat the word limits below as hard caps, not targets: a cut-off, invalid JSON response is worse than a slightly terser one.
 - wkt: exactly ONE tag — the single best-fit Work type.
 - law: 1 to 3 tags, primary substantive law first, then any clearly-engaged secondary regime (data protection, IP, employment, land, consumer law, etc).
 - sec: exactly ONE tag — the industry sector of the contract's actual subject matter, not either party's general business, unless they're the same.
@@ -364,7 +365,7 @@ app.post("/api/categorise", rateLimit, async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 1024,
+        max_tokens: 1536,
         system: SYSTEM_PROMPT,
         messages: [
           {
@@ -400,8 +401,29 @@ app.post("/api/categorise", rateLimit, async (req, res) => {
     try {
       parsed = JSON.parse(raw);
     } catch (e) {
-      console.error("Failed to parse model JSON:", raw);
-      return res.status(502).json({ error: "Could not parse model response as JSON" });
+      // Fallback: the model may have added stray text before/after the JSON
+      // despite instructions not to. Try pulling out just the {...} block.
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          parsed = JSON.parse(match[0]);
+        } catch (e2) {
+          /* still broken — fall through to the error below */
+        }
+      }
+    }
+
+    if (!parsed) {
+      const truncated = data.stop_reason === "max_tokens";
+      console.error(
+        `Failed to parse model JSON (stop_reason=${data.stop_reason}):`,
+        raw.slice(0, 2000)
+      );
+      return res.status(502).json({
+        error: truncated
+          ? "Model response was cut off before finishing (contract may be unusually complex) — try again"
+          : "Could not parse model response as JSON — check server logs for the raw response",
+      });
     }
 
     res.json(parsed);
