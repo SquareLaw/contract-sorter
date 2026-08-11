@@ -296,6 +296,44 @@ role-wit-1|Factual witness
 role-wit-2|Expert witness
 `.trim();
 
+const TAXONOMY_INF = `
+inf-1|Legal document
+inf-2|Legal analysis
+inf-3|Legal source
+inf-4|Process material
+inf-5|Administrative material
+inf-6|Evidence
+inf-7|Organisational record
+inf-8|Publication
+inf-9|Communication
+`.trim();
+
+const TAXONOMY_INF_STATUS = `
+inf-sta-1|Final
+inf-sta-2|Draft
+inf-sta-3|Fluid
+`.trim();
+
+const TAXONOMY_INF_AUDIENCE = `
+inf-aud-1|Internal
+inf-aud-1.1|Internal > Legal professionals
+inf-aud-1.2|Internal > Business people
+inf-aud-2|External
+inf-aud-2.1|External > Client
+inf-aud-2.2|External > Prospect
+inf-aud-2.3|External > Public
+inf-aud-2.4|External > Counterparty
+inf-aud-2.5|External > Authority
+`.trim();
+
+const TAXONOMY_INF_USE = `
+inf-use-1|Work record > general
+inf-use-2|Work record > key
+inf-use-3|Knowledge > contextual
+inf-use-4|Knowledge > good practice
+inf-use-5|Knowledge > canonical
+`.trim();
+
 const SYSTEM_PROMPT = `You are a legal taxonomist applying the "noslegal" open taxonomy (v4.02) to categorise a single uploaded contract.
 
 Read the contract text the user provides, then respond with ONLY a single JSON object — no markdown code fences, no preamble, no commentary before or after. Exact shape:
@@ -313,7 +351,11 @@ Read the contract text the user provides, then respond with ONLY a single JSON o
     "law": [["code","name"], ["code","name"]],
     "sec": [["code","name"]],
     "role": [["code","name (Party A label)"], ["code","name (Party B label)"]],
-    "place": [["ISO-3166-1 alpha-2 code","country name"]]
+    "place": [["ISO-3166-1 alpha-2 code","country name"]],
+    "inf": [["code","name"]],
+    "infStatus": [["code","name"]],
+    "infAudience": [["code","name"]],
+    "infUse": [["code","name"]]
   },
   "rationale": "<=60 words explaining the Work type and Area of law choices, and flagging anything the taxonomy doesn't fit cleanly"
 }
@@ -325,6 +367,10 @@ Rules:
 - sec: exactly ONE tag — the industry sector of the contract's actual subject matter, not either party's general business, unless they're the same.
 - role: exactly one role tag per party (two total). If the contract is symmetric/mutual (e.g. a mutual NDA) use role-tra-6 "Contractual party" for both.
 - place: the governing law jurisdiction as an ISO country code, or the closest country-level equivalent if the document names a sub-national court.
+- inf: exactly ONE tag. For an uploaded contract this is almost always inf-1 "Legal document". Only use a different code if the uploaded text is clearly not itself the legal instrument (e.g. it's a covering email or an internal memo about a contract) — in that rare case, say so in the rationale.
+- infStatus: exactly ONE tag. Infer from the document itself: signature blocks that are signed/dated, "IN WITNESS WHEREOF" execution language, or no placeholder brackets → inf-sta-1 Final. Unsigned but complete, mark-up, tracked changes, or a "DRAFT" watermark/heading → inf-sta-2 Draft. inf-sta-3 Fluid essentially never applies to a contract — reserve it for continuously-updated non-versioned material.
+- infAudience: 1 to 2 tags. A contract is external-facing between named parties, so this is normally inf-aud-2 "External" plus inf-aud-2.4 "Counterparty" (each party is the other's counterparty). Use inf-aud-2.1 "Client" instead of/alongside Counterparty only if the document itself frames one party as "the Client" (e.g. an engagement letter). Do not use the Internal (inf-aud-1) codes for a contract between two external parties.
+- infUse: 0 to 1 tags, OPTIONAL and lower-confidence than the other tags — this classification is normally a matter-management judgement made with context you don't have from the document alone. Only set it if the document text gives a clear, explicit signal (e.g. it is explicitly labelled a template/precedent/model form for reuse → inf-use-4, or it is an executed, final, deal-closing agreement that would obviously be flagged as a key deliverable → inf-use-2). If there's no such signal, return an empty array — do not guess.
 - Use ONLY codes from the reference lists below — never invent a code. If truly nothing fits well, pick the closest parent-level code (e.g. wkt-tra-2) and say so in the rationale.
 - Respond in English regardless of the contract's own language, except keep party names exactly as given in the document.
 
@@ -338,7 +384,19 @@ SECTORS (facet 5):
 ${TAXONOMY_SEC}
 
 ROLES (facet 4):
-${TAXONOMY_ROLE}`;
+${TAXONOMY_ROLE}
+
+INFORMATION TYPE (facet 8.0):
+${TAXONOMY_INF}
+
+INFORMATION STATUS (facet 8.2):
+${TAXONOMY_INF_STATUS}
+
+INFORMATION AUDIENCE (facet 8.3):
+${TAXONOMY_INF_AUDIENCE}
+
+INFORMATION USE (facet 8.1):
+${TAXONOMY_INF_USE}`;
 
 /* ============ ROUTES ============ */
 
@@ -365,7 +423,7 @@ app.post("/api/categorise", rateLimit, async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 1536,
+        max_tokens: 1800,
         system: SYSTEM_PROMPT,
         messages: [
           {
