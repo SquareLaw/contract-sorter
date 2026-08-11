@@ -185,6 +185,10 @@ const FACET_META = {
   sec:   { label: "Sector",        color: "#3E6B4F", bg: "#DCE9DF" },
   role:  { label: "Roles",         color: "#7A3E5E", bg: "#EBDCE4" },
   place: { label: "Governing law", color: "#4A4A48", bg: "#E4E2D8" },
+  inf:         { label: "Information type",     color: "#6B4C7A", bg: "#E5DCE9" },
+  infStatus:   { label: "Information status",   color: "#8A6D1E", bg: "#F1E9CF" },
+  infAudience: { label: "Information audience", color: "#1E6B7A", bg: "#D6E7E9" },
+  infUse:      { label: "Information use",      color: "#5E6B1E", bg: "#E4E9D6" },
 };
 
 /* ============ STATE ============ */
@@ -292,6 +296,10 @@ async function handleFiles(fileList){
           sec: result.tags?.sec || [],
           role: result.tags?.role || [],
           place: result.tags?.place || [],
+          inf: result.tags?.inf || [],
+          infStatus: result.tags?.infStatus || [],
+          infAudience: result.tags?.infAudience || [],
+          infUse: result.tags?.infUse || [],
         },
         rationale: result.rationale || '',
       };
